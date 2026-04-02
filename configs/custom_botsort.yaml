@@ -1,0 +1,18 @@
+# configs/custom_botsort.yaml
+tracker_type: botsort
+
+# --- Core Tracking ---
+track_high_thresh: 0.5 
+track_low_thresh: 0.1 
+new_track_thresh: 0.6 
+match_thresh: 0.8       
+
+# --- Our Custom PoC Overrides ---
+track_buffer: 300       # CUSTOM: 10-second memory to stop ID switching
+proximity_thresh: 0.3   # CUSTOM: Very strict boundary to stop IDs from merging
+
+# --- Mandatory Ultralytics System Variables ---
+gmc_method: sparseOptFlow
+appearance_thresh: 0.25 
+with_reid: False        # Required by v8.1+
+fuse_score: True        # Required by v8.2+ (The line that crashed your script!)

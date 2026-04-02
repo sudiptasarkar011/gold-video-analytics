@@ -1,0 +1,39 @@
+# OS files
+.DS_Store
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Local env / machine-specific config
+.env
+.env.*
+*.local
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# Project-generated runtime data
+data/metadata_log.txt
+data/master_metadata_log.json
+
+# Local datasets and model artifacts
+data/dataset/
+*.pt
+*.pth
+*.onnx
