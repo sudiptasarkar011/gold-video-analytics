@@ -5,12 +5,10 @@ import math
 import glob
 from itertools import combinations
 from ultralytics import YOLO
-import matplotlib.pyplot as plt
 
 # Load YOLOv8 Pose Model
 model = YOLO('yolov8n-pose.pt')
 
-# NEW: Point to the folder containing all your clips
 VIDEO_DIR = "../data/dataset"
 TRACKER_CONFIG = "../configs/custom_botsort.yaml"
 
@@ -49,27 +47,22 @@ def get_proximity_alerts(boxes, track_ids):
             
     return alerts
 
-def run_batch_pipeline():
+def run_robust_batch_pipeline():
     os.makedirs("../data", exist_ok=True)
-    
-    # Grab all MP4 files in the target directory
     video_files = glob.glob(os.path.join(VIDEO_DIR, "*.mp4"))
     
     if not video_files:
         print(f"Error: No .mp4 files found in {VIDEO_DIR}.")
-        print("Make sure your dataset folder is named correctly and contains videos!")
         return
 
-    print(f"Batch Pipeline Active. Found {len(video_files)} videos to process.")
+    print(f"Robust Batch Pipeline Active. Found {len(video_files)} videos to process.")
     
-    # Master JSON Structure to hold all videos
     master_metadata = {
         "dataset_directory": VIDEO_DIR,
         "total_videos_processed": len(video_files),
         "processed_videos": []
     }
 
-    # Loop through every single video in the folder
     for video_path in video_files:
         filename = os.path.basename(video_path)
         print(f"\n--- Processing: {filename} ---")
@@ -79,7 +72,10 @@ def run_batch_pipeline():
         frame_count = 0
         CHUNK_SIZE = int(fps / 2) 
         
-        video_unique_ids = set()
+        # NEW: Track Lifespan Dictionary to prevent Ghost IDs
+        id_lifespan = {}
+        validated_unique_ids = set()
+        
         video_data = {
             "filename": filename,
             "total_unique_people": 0,
@@ -94,10 +90,9 @@ def run_batch_pipeline():
 
             frame_count += 1
 
-            results = model.track(frame, persist=True, tracker=TRACKER_CONFIG, iou=0.45, verbose=False)
-            annotated = results[0].plot()
-            plt.imshow(annotated)
-            plt.show()
+            # NEW: classes=[0] forces it to ONLY look for humans. 
+            # NEW: conf=0.40 ignores low-confidence noise (windows/chairs).
+            results = model.track(frame, persist=True, tracker=TRACKER_CONFIG, iou=0.45, conf=0.40, classes=[0], verbose=False)
 
             if frame_count % CHUNK_SIZE == 0:
                 chunk_num = frame_count // CHUNK_SIZE
@@ -113,8 +108,16 @@ def run_batch_pipeline():
                     proximity_alerts = get_proximity_alerts(boxes, track_ids)
 
                     for box, track_id, kpts in zip(boxes, track_ids, keypoints_array):
-                        video_unique_ids.add(int(track_id))
-                        current_active_ids.append(int(track_id))
+                        t_id = int(track_id)
+                        
+                        # NEW: Increment the lifespan counter for this ID
+                        id_lifespan[t_id] = id_lifespan.get(t_id, 0) + 1
+                        
+                        # NEW: Only count them as a "real" person if they survive 10 tracking cycles
+                        if id_lifespan[t_id] > 10:
+                            validated_unique_ids.add(t_id)
+                            
+                        current_active_ids.append(t_id)
                         
                         _, _, w, h = box
                         action = get_posture(w, h)
@@ -123,7 +126,7 @@ def run_batch_pipeline():
                             action = "hiding items in clothing"
                         
                         frame_actions.append({
-                            "id": int(track_id),
+                            "id": t_id,
                             "status": "SUSPICIOUS" if action in ["crouching", "hiding items in clothing"] else "NORMAL",
                             "action": action
                         })
@@ -139,24 +142,20 @@ def run_batch_pipeline():
 
             # UI Visualization
             annotated_frame = results[0].plot()
-            cv2.putText(annotated_frame, f"File: {filename}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-            cv2.imshow("Batch Enterprise Pipeline", annotated_frame)
+            cv2.putText(annotated_frame, f"Validated Unique People: {len(validated_unique_ids)}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            cv2.imshow("Robust Enterprise Pipeline", annotated_frame)
             
-            # Press 'q' to skip to the NEXT video, not quit the whole program
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 print(f"Skipping the rest of {filename}...")
                 break
 
-        # Finalize data for this specific video
-        video_data["total_unique_people"] = len(video_unique_ids)
-        video_data["active_ids"] = list(video_unique_ids)
+        # Finalize data using ONLY the validated IDs
+        video_data["total_unique_people"] = len(validated_unique_ids)
+        video_data["active_ids"] = list(validated_unique_ids)
         
-        # Append to the master JSON
         master_metadata["processed_videos"].append(video_data)
-        
         cap.release()
 
-    # Save the massive Master JSON File
     cv2.destroyAllWindows()
     log_path = "../data/master_metadata_log.json"
     with open(log_path, "w") as f:
@@ -167,4 +166,4 @@ def run_batch_pipeline():
     print(f"Master JSON saved to {log_path}")
 
 if __name__ == "__main__":
-    run_batch_pipeline()
+    run_robust_batch_pipeline()
